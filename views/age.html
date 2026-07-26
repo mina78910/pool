@@ -16,11 +16,13 @@
 <body>
   <main>
     <h1>年齢一覧</h1>
+    <p>卒業年と現在の区分は、4月入学・留年や浪人なしで4年制大学を卒業する標準モデルによる目安です。</p>
     <div id="age-list" aria-live="polite">読み込み中...</div>
   </main>
 
   <script type="module">
     import { fetchCsv } from '../js/common.js';
+    import { getCurrentStage, getGraduationYear } from '../js/age-master.mjs';
 
     const list = document.querySelector('#age-list');
 
@@ -39,7 +41,14 @@
       const personCategories = ['スポーツ選手系', 'タレント、俳優系', '政治家、実業家系'];
       const table = document.createElement('table');
       const header = table.createTHead().insertRow();
-      for (const label of ['生年', '年齢', '1993年生まれとの差', ...personCategories]) {
+      for (const label of [
+        '生年',
+        '年齢',
+        '卒業年',
+        '現在',
+        '1993年生まれとの差',
+        ...personCategories,
+      ]) {
         const cell = document.createElement('th');
         cell.scope = 'col';
         cell.textContent = label;
@@ -58,6 +67,8 @@
         const values = [
           `${year}年`,
           `${currentYear - year}歳`,
+          `${getGraduationYear(year)}年卒`,
+          getCurrentStage(year),
           differenceLabel,
         ];
 
