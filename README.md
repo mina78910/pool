@@ -8,6 +8,9 @@ CSV データを用途別の HTML ビューで表示する、Vanilla JavaScript 
 - `views/`: CSV ごとの表示ロジックを持つ HTML を配置します。
 - `js/common.js`: CSV の取得・解析など、各ビューで共有する処理を提供します。
 
+ストレングスファインダーの資質は `data/strengths.csv`、資質ごとの知識は
+`data/strength_notes.csv` に追記すると、`views/strengths.html` に自動反映されます。
+
 新しいデータを追加するときは、たとえば `data/history.csv` に対応する
 `views/history.html` を作成し、トップページからリンクしてください。
 

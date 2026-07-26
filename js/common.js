@@ -1,33 +1,48 @@
 /**
- * CSV の1行を、引用符で囲まれたカンマや二重引用符を考慮して分割します。
- * @param {string} line
- * @returns {string[]}
+ * CSV を、引用符内のカンマ・改行・二重引用符を考慮してオブジェクトへ変換します。
+ * @param {string} text
+ * @returns {Record<string, string>[]}
  */
-function parseCsvLine(line) {
-  const values = [];
+export function parseCsv(text) {
+  const rows = [];
+  let row = [];
   let value = '';
   let quoted = false;
+  const source = text.replace(/^\uFEFF/, '');
 
-  for (let index = 0; index < line.length; index += 1) {
-    const character = line[index];
-
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
     if (character === '"') {
-      if (quoted && line[index + 1] === '"') {
+      if (quoted && source[index + 1] === '"') {
         value += '"';
         index += 1;
       } else {
         quoted = !quoted;
       }
     } else if (character === ',' && !quoted) {
-      values.push(value);
+      row.push(value);
+      value = '';
+    } else if ((character === '\n' || character === '\r') && !quoted) {
+      if (character === '\r' && source[index + 1] === '\n') index += 1;
+      row.push(value);
+      if (row.some((cell) => cell.trim() !== '')) rows.push(row);
+      row = [];
       value = '';
     } else {
       value += character;
     }
   }
 
-  values.push(value);
-  return values;
+  if (value !== '' || row.length > 0) {
+    row.push(value);
+    if (row.some((cell) => cell.trim() !== '')) rows.push(row);
+  }
+  if (rows.length === 0) return [];
+
+  const headers = rows[0];
+  return rows.slice(1).map((values) => Object.fromEntries(
+    headers.map((header, index) => [header, values[index] ?? '']),
+  ));
 }
 
 /**
@@ -41,13 +56,5 @@ export async function fetchCsv(url) {
     throw new Error(`CSVの読み込みに失敗しました（${response.status}）`);
   }
 
-  const text = (await response.text()).replace(/^\uFEFF/, '');
-  const lines = text.split(/\r?\n/).filter((line) => line.trim() !== '');
-  if (lines.length === 0) return [];
-
-  const headers = parseCsvLine(lines[0]);
-  return lines.slice(1).map((line) => {
-    const values = parseCsvLine(line);
-    return Object.fromEntries(headers.map((header, index) => [header, values[index] ?? '']));
-  });
+  return parseCsv(await response.text());
 }
