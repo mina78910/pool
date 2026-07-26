@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ストレングスファインダー | pool</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #17202a; background: #f4f7f6; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { width: min(1100px, calc(100% - 2rem)); margin: 0 auto; padding: 3rem 0; }
+    header { margin-bottom: 2rem; }
+    h1 { margin: 0 0 .4rem; font-size: clamp(1.7rem, 4vw, 2.5rem); }
+    header p, .empty { color: #63706c; }
+    label { display: block; font-weight: 700; margin-bottom: .5rem; }
+    input { width: 100%; padding: .85rem 1rem; border: 1px solid #b8c6c1; border-radius: .6rem; font: inherit; background: white; }
+    input:focus { outline: 3px solid #b9e5d6; border-color: #087f5b; }
+    .layout { display: grid; grid-template-columns: minmax(320px, 1.1fr) minmax(300px, .9fr); gap: 1.5rem; margin-top: 1.5rem; align-items: start; }
+    .panel { background: white; border: 1px solid #dce4e1; border-radius: .8rem; box-shadow: 0 4px 20px #263c3510; overflow: hidden; }
+    .panel-title { margin: 0; padding: 1rem 1.25rem; font-size: 1rem; border-bottom: 1px solid #e5ebe9; }
+    table { width: 100%; border-collapse: collapse; }
+    th { color: #63706c; font-size: .82rem; text-align: left; background: #f8faf9; }
+    th, td { padding: .85rem 1rem; border-bottom: 1px solid #edf1f0; }
+    th:last-child, td:last-child { text-align: right; white-space: nowrap; }
+    tbody tr { cursor: pointer; }
+    tbody tr:hover, tbody tr:focus, tbody tr[aria-selected="true"] { background: #eaf7f2; outline: none; }
+    tbody tr:last-child td { border-bottom: 0; }
+    .detail { padding: 1.4rem; min-height: 13rem; }
+    .detail h2 { margin: 0; }
+    .domain { margin: .3rem 0 1.5rem; color: #087f5b; font-weight: 700; }
+    .note-group + .note-group { margin-top: 1.4rem; }
+    .note-group h3 { margin: 0 0 .5rem; font-size: 1rem; }
+    .note-group ul { margin: 0; padding-left: 1.3rem; line-height: 1.65; }
+    .status { padding: 1.5rem; }
+    @media (max-width: 760px) { .layout { grid-template-columns: 1fr; } main { padding-top: 1.5rem; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>ストレングスファインダー</h1>
+      <p>34の資質と、日々蓄積した知識を検索できます。</p>
+    </header>
+    <section aria-labelledby="search-label">
+      <label id="search-label" for="strength-search">資質名で検索</label>
+      <input id="strength-search" type="search" placeholder="例：適応性、戦略性" autocomplete="off">
+    </section>
+    <div class="layout">
+      <section class="panel" aria-labelledby="list-title">
+        <h2 class="panel-title" id="list-title">資質一覧（<span id="result-count">0</span>件）</h2>
+        <div id="strength-list" class="status" aria-live="polite">読み込み中...</div>
+      </section>
+      <section class="panel" aria-labelledby="detail-title">
+        <h2 class="panel-title" id="detail-title">詳細</h2>
+        <div id="strength-detail" class="detail"><p class="empty">資質を選択すると詳細が表示されます。</p></div>
+      </section>
+    </div>
+  </main>
+  <script type="module">
+    import { fetchCsv } from '../js/common.js';
+    import { createNotesIndex, filterStrengths } from '../js/strengths-master.mjs';
+
+    const search = document.querySelector('#strength-search');
+    const list = document.querySelector('#strength-list');
+    const detail = document.querySelector('#strength-detail');
+    const resultCount = document.querySelector('#result-count');
+    let strengths = [];
+    let notesIndex = new Map();
+    let selectedName = '';
+
+    function showDetail(strength) {
+      selectedName = strength['資質名'];
+      detail.replaceChildren();
+      const title = document.createElement('h2');
+      title.textContent = selectedName;
+      const domain = document.createElement('p');
+      domain.className = 'domain';
+      domain.textContent = strength['領域'];
+      detail.append(title, domain);
+
+      const notesByType = notesIndex.get(selectedName);
+      if (!notesByType) {
+        const empty = document.createElement('p');
+        empty.className = 'empty';
+        empty.textContent = '登録された知識はまだありません。';
+        detail.append(empty);
+        return;
+      }
+      for (const [type, contents] of notesByType) {
+        const section = document.createElement('section');
+        section.className = 'note-group';
+        const heading = document.createElement('h3');
+        heading.textContent = `■ ${type}`;
+        const items = document.createElement('ul');
+        for (const content of contents) {
+          const item = document.createElement('li');
+          item.textContent = content;
+          items.append(item);
+        }
+        section.append(heading, items);
+        detail.append(section);
+      }
+    }
+
+    function renderList() {
+      const filtered = filterStrengths(strengths, search.value);
+      resultCount.textContent = filtered.length;
+      const table = document.createElement('table');
+      const header = table.createTHead().insertRow();
+      for (const label of ['資質名', '領域', '登録件数']) {
+        const cell = document.createElement('th');
+        cell.scope = 'col';
+        cell.textContent = label;
+        header.append(cell);
+      }
+      const body = table.createTBody();
+      for (const strength of filtered) {
+        const name = strength['資質名'];
+        const row = body.insertRow();
+        row.tabIndex = 0;
+        row.setAttribute('aria-selected', String(name === selectedName));
+        const noteCount = [...(notesIndex.get(name)?.values() ?? [])]
+          .reduce((total, notes) => total + notes.length, 0);
+        for (const value of [name, strength['領域'], `${noteCount}件`]) row.insertCell().textContent = value;
+        const select = () => { showDetail(strength); renderList(); };
+        row.addEventListener('click', select);
+        row.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); select(); }
+        });
+      }
+      if (filtered.length === 0) {
+        const row = body.insertRow();
+        const cell = row.insertCell();
+        cell.colSpan = 3;
+        cell.className = 'empty';
+        cell.textContent = '一致する資質はありません。';
+      }
+      list.className = '';
+      list.replaceChildren(table);
+    }
+
+    try {
+      const [strengthRows, noteRows] = await Promise.all([
+        fetchCsv('../data/strengths.csv'), fetchCsv('../data/strength_notes.csv'),
+      ]);
+      strengths = strengthRows;
+      notesIndex = createNotesIndex(noteRows);
+      renderList();
+      search.addEventListener('input', renderList);
+    } catch (error) {
+      console.error(error);
+      list.textContent = 'データを読み込めませんでした。時間をおいて再度お試しください。';
+    }
+  </script>
+</body>
+</html>
